@@ -1,0 +1,50 @@
+==========================================================================================
+CORRECTED CONNECT FOUR AI-vs-AI EXPERIMENT
+==========================================================================================
+Configurations: 8
+Selected pairings: 14
+Matches per pairing: 6
+Total games: 84
+Node budget per move: 12000
+
+Pair 01/14 | Games 006/84 | Baseline          vs Center_only       | W/L/D 0/0/6
+Pair 02/14 | Games 012/84 | Baseline          vs Pairs_only        | W/L/D 0/6/0
+Pair 03/14 | Games 018/84 | Baseline          vs Triples_only      | W/L/D 0/6/0
+Pair 04/14 | Games 024/84 | Baseline          vs Center_Pairs      | W/L/D 3/0/3
+Pair 05/14 | Games 030/84 | Baseline          vs Center_Triples    | W/L/D 3/3/0
+Pair 06/14 | Games 036/84 | Baseline          vs Pairs_Triples     | W/L/D 0/6/0
+Pair 07/14 | Games 042/84 | Baseline          vs Combined          | W/L/D 0/6/0
+Pair 08/14 | Games 048/84 | Combined          vs Center_only       | W/L/D 6/0/0
+Pair 09/14 | Games 054/84 | Combined          vs Pairs_only        | W/L/D 3/0/3
+Pair 10/14 | Games 060/84 | Combined          vs Triples_only      | W/L/D 0/3/3
+Pair 11/14 | Games 066/84 | Combined          vs Center_Pairs      | W/L/D 6/0/0
+Pair 12/14 | Games 072/84 | Combined          vs Center_Triples    | W/L/D 3/3/0
+Pair 13/14 | Games 078/84 | Combined          vs Pairs_Triples     | W/L/D 3/3/0
+Pair 14/14 | Games 084/84 | Center_only       vs Pairs_only        | W/L/D 0/6/0
+
+===================================================================================================================
+CORRECTED FINAL MATCH PERFORMANCE SUMMARY
+===================================================================================================================
+Config A          | Config B          | W/L/D      | A score   | Avg plies  | Avg nodes  | Avg time  
+Baseline          | Center_only       | 0/0/6    |    50.0% |      42.00 |     8603.8 |    0.8823s
+Baseline          | Pairs_only        | 0/6/0    |     0.0% |      35.50 |     8415.7 |    0.8423s
+Baseline          | Triples_only      | 0/6/0    |     0.0% |      36.50 |     8525.8 |    0.8971s
+Baseline          | Center_Pairs      | 3/0/3    |    75.0% |      41.00 |     8357.9 |    0.8810s
+Baseline          | Center_Triples    | 3/3/0    |    50.0% |      39.00 |     8485.8 |    0.8994s
+Baseline          | Pairs_Triples     | 0/6/0    |     0.0% |      36.50 |     8954.8 |    0.9622s
+Baseline          | Combined          | 0/6/0    |     0.0% |      28.50 |     8625.8 |    0.9486s
+Combined          | Center_only       | 6/0/0    |   100.0% |      28.50 |     8625.8 |    0.9588s
+Combined          | Pairs_only        | 3/0/3    |    75.0% |      41.00 |     8380.2 |    0.9171s
+Combined          | Triples_only      | 0/3/3    |    25.0% |      29.50 |     9366.8 |    1.0345s
+Combined          | Center_Pairs      | 6/0/0    |   100.0% |      29.50 |     8741.7 |    0.9861s
+Combined          | Center_Triples    | 3/3/0    |    50.0% |      19.00 |     8729.7 |    1.0225s
+Combined          | Pairs_Triples     | 3/3/0    |    50.0% |      27.00 |     9108.3 |    1.0435s
+Center_only       | Pairs_only        | 0/6/0    |     0.0% |      35.50 |     8415.7 |    0.8423s
+
+==========================================================================================
+CORRECTED EXPERIMENT COMPLETED
+Total completed games: 84
+==========================================================================================
+
+
+

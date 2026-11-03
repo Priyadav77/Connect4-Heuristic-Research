@@ -1,0 +1,696 @@
+
+# ================================================================
+# CONNECT FOUR RESEARCH - FINAL PILOT EXPERIMENT
+# Heuristic Feature Ablation + Tactical Robustness
+# Minimax + Alpha-Beta | Cumulative Fixed Node Budget
+# ================================================================
+
+import random
+import time
+import statistics
+import platform
+
+# -------------------- 1. EXPERIMENT SETTINGS ---------------------
+
+ROWS, COLS = 6, 7
+EMPTY, P1, P2 = 0, 1, 2
+
+SEED = 42
+random.seed(SEED)
+
+NODE_BUDGET = 12000
+MATCHES_PER_PAIR = 6
+TACTICAL_POSITIONS_PER_TYPE = 60
+
+# Eight configurations
+CONFIGS = {
+    "Baseline":       (False, False, False),
+    "Center_only":    (True,  False, False),
+    "Pairs_only":     (False, True,  False),
+    "Triples_only":   (False, False, True),
+    "Center_Pairs":   (True,  True,  False),
+    "Center_Triples": (True,  False, True),
+    "Pairs_Triples":  (False, True,  True),
+    "Combined":       (True,  True,  True)
+}
+
+# 14 selected comparisons:
+# 7 baseline comparisons + 6 feature-ablation comparisons
+# + 1 individual-feature comparison.
+PAIRINGS = [
+    ("Baseline", "Center_only"),
+    ("Baseline", "Pairs_only"),
+    ("Baseline", "Triples_only"),
+    ("Baseline", "Center_Pairs"),
+    ("Baseline", "Center_Triples"),
+    ("Baseline", "Pairs_Triples"),
+    ("Baseline", "Combined"),
+
+    ("Combined", "Center_only"),
+    ("Combined", "Pairs_only"),
+    ("Combined", "Triples_only"),
+    ("Combined", "Center_Pairs"),
+    ("Combined", "Center_Triples"),
+    ("Combined", "Pairs_Triples"),
+
+    ("Center_only", "Pairs_only")
+]
+
+assert len(PAIRINGS) == 14
+assert len(set(PAIRINGS)) == 14
+
+TOTAL_GAMES = len(PAIRINGS) * MATCHES_PER_PAIR
+
+# -------------------- 2. BOARD FUNCTIONS -------------------------
+
+def new_board():
+    return [[EMPTY] * COLS for _ in range(ROWS)]
+
+
+def legal_moves(board):
+    return [c for c in range(COLS) if board[0][c] == EMPTY]
+
+
+def drop(board, col, player):
+    for r in range(ROWS - 1, -1, -1):
+        if board[r][col] == EMPTY:
+            board[r][col] = player
+            return r
+    return None
+
+
+def undo(board, row, col):
+    board[row][col] = EMPTY
+
+
+def check_win(board, player):
+    # Horizontal
+    for r in range(ROWS):
+        for c in range(COLS - 3):
+            if all(board[r][c+k] == player for k in range(4)):
+                return True
+
+    # Vertical
+    for r in range(ROWS - 3):
+        for c in range(COLS):
+            if all(board[r+k][c] == player for k in range(4)):
+                return True
+
+    # Diagonal down-right
+    for r in range(ROWS - 3):
+        for c in range(COLS - 3):
+            if all(board[r+k][c+k] == player for k in range(4)):
+                return True
+
+    # Diagonal up-right
+    for r in range(3, ROWS):
+        for c in range(COLS - 3):
+            if all(board[r-k][c+k] == player for k in range(4)):
+                return True
+
+    return False
+
+
+def board_full(board):
+    return len(legal_moves(board)) == 0
+
+
+def get_windows(board):
+    windows = []
+
+    for r in range(ROWS):
+        for c in range(COLS - 3):
+            windows.append([board[r][c+k] for k in range(4)])
+
+    for r in range(ROWS - 3):
+        for c in range(COLS):
+            windows.append([board[r+k][c] for k in range(4)])
+
+    for r in range(ROWS - 3):
+        for c in range(COLS - 3):
+            windows.append([board[r+k][c+k] for k in range(4)])
+
+    for r in range(3, ROWS):
+        for c in range(COLS - 3):
+            windows.append([board[r-k][c+k] for k in range(4)])
+
+    return windows
+
+
+# -------------------- 3. HEURISTIC FEATURES ----------------------
+
+def evaluate(board, player, features):
+    use_center, use_pairs, use_triples = features
+    opponent = 3 - player
+    score = 0
+
+    # Feature 1: Center control
+    if use_center:
+        center = [board[r][COLS // 2] for r in range(ROWS)]
+        score += 4 * (
+            center.count(player) - center.count(opponent)
+        )
+
+    # Feature 2 and 3: Patterns
+    for window in get_windows(board):
+        own = window.count(player)
+        opp = window.count(opponent)
+        empty = window.count(EMPTY)
+
+        if own > 0 and opp > 0:
+            continue
+
+        if use_pairs:
+            if own == 2 and empty == 2:
+                score += 3
+            elif opp == 2 and empty == 2:
+                score -= 3
+
+        if use_triples:
+            if own == 3 and empty == 1:
+                score += 15
+            elif opp == 3 and empty == 1:
+                score -= 18
+
+    return score
+
+
+# -------------------- 4. MINIMAX + ALPHA-BETA --------------------
+
+class BudgetExceeded(Exception):
+    pass
+
+
+class SearchCounter:
+    def __init__(self, budget):
+        self.nodes = 0
+        self.budget = budget
+
+    def visit(self):
+        # Strict cumulative budget: never exceed this number.
+        if self.nodes >= self.budget:
+            raise BudgetExceeded
+        self.nodes += 1
+
+
+def minimax(board, depth, alpha, beta, maximizing,
+            player, features, counter, ply=0):
+
+    counter.visit()
+
+    opponent = 3 - player
+
+    if check_win(board, player):
+        return 100000 - ply
+
+    if check_win(board, opponent):
+        return -100000 + ply
+
+    if board_full(board):
+        return 0
+
+    if depth == 0:
+        return evaluate(board, player, features)
+
+    moves = sorted(
+        legal_moves(board),
+        key=lambda c: abs(c - COLS // 2)
+    )
+
+    if maximizing:
+        value = -float("inf")
+
+        for col in moves:
+            row = drop(board, col, player)
+
+            try:
+                child = minimax(
+                    board, depth - 1, alpha, beta,
+                    False, player, features, counter, ply + 1
+                )
+            finally:
+                undo(board, row, col)
+
+            value = max(value, child)
+            alpha = max(alpha, value)
+
+            if alpha >= beta:
+                break
+
+        return value
+
+    else:
+        value = float("inf")
+
+        for col in moves:
+            row = drop(board, col, opponent)
+
+            try:
+                child = minimax(
+                    board, depth - 1, alpha, beta,
+                    True, player, features, counter, ply + 1
+                )
+            finally:
+                undo(board, row, col)
+
+            value = min(value, child)
+            beta = min(beta, value)
+
+            if alpha >= beta:
+                break
+
+        return value
+
+
+def choose_move(board, player, features):
+    moves = sorted(
+        legal_moves(board),
+        key=lambda c: abs(c - COLS // 2)
+    )
+
+    if not moves:
+        return None, {"nodes": 0, "depth": 0, "seconds": 0.0}
+
+    snapshot = [row[:] for row in board]
+    start = time.perf_counter()
+
+    counter = SearchCounter(NODE_BUDGET)
+    best_move = moves[0]
+    completed_depth = 0
+
+    try:
+        # One shared counter across ALL iterative-deepening depths.
+        for depth in range(1, 20):
+            current_best = best_move
+            best_value = -float("inf")
+            alpha = -float("inf")
+            beta = float("inf")
+
+            try:
+                for col in moves:
+                    row = drop(board, col, player)
+
+                    try:
+                        value = minimax(
+                            board, depth - 1, alpha, beta,
+                            False, player, features, counter, 1
+                        )
+                    finally:
+                        undo(board, row, col)
+
+                    if value > best_value:
+                        best_value = value
+                        current_best = col
+
+                    alpha = max(alpha, best_value)
+
+                # Update only after an entire depth is completed.
+                best_move = current_best
+                completed_depth = depth
+
+            except BudgetExceeded:
+                break
+
+            if abs(best_value) >= 99900:
+                break
+
+    finally:
+        # Restore the original board even after budget interruption.
+        for r in range(ROWS):
+            board[r][:] = snapshot[r]
+
+    elapsed = time.perf_counter() - start
+
+    return best_move, {
+        "nodes": counter.nodes,
+        "depth": completed_depth,
+        "seconds": elapsed
+    }
+
+
+# -------------------- 5. ENGINE VALIDATION -----------------------
+
+def validate_engine():
+    board = new_board()
+
+    assert drop(board, 3, P1) == 5
+
+    board = new_board()
+    for c in range(4):
+        drop(board, c, P1)
+    assert check_win(board, P1)
+
+    board = new_board()
+    for _ in range(4):
+        drop(board, 2, P2)
+    assert check_win(board, P2)
+
+    board = new_board()
+    for r, c in [(5, 0), (4, 1), (3, 2), (2, 3)]:
+        for rr in range(r + 1, ROWS):
+            if board[rr][c] == EMPTY:
+                board[rr][c] = P2
+        board[r][c] = P1
+    assert check_win(board, P1)
+
+    # Test budget and board restoration.
+    board = new_board()
+    before = [row[:] for row in board]
+
+    move, info = choose_move(board, P1, CONFIGS["Combined"])
+
+    assert board == before
+    assert info["nodes"] <= NODE_BUDGET
+    assert move in legal_moves(board)
+
+    print("Engine validation: PASSED")
+    print("Board restoration: PASSED")
+    print("Cumulative node-budget validation: PASSED")
+
+
+# -------------------- 6. TACTICAL DATASET ------------------------
+
+def immediate_moves(board, player):
+    result = []
+
+    for col in legal_moves(board):
+        row = drop(board, col, player)
+
+        try:
+            if check_win(board, player):
+                result.append(col)
+        finally:
+            undo(board, row, col)
+
+    return result
+
+
+def random_reachable_board(min_moves=8, max_moves=30):
+    board = new_board()
+    player = P1
+
+    n = random.randint(min_moves, max_moves)
+
+    for _ in range(n):
+        moves = legal_moves(board)
+
+        if not moves:
+            break
+
+        col = random.choice(moves)
+        drop(board, col, player)
+
+        if check_win(board, player):
+            break
+
+        player = 3 - player
+
+    return board, player
+
+
+def generate_tactical_positions():
+    win_positions = []
+    block_positions = []
+
+    attempts = 0
+    max_attempts = 30000
+
+    while attempts < max_attempts:
+        if (len(win_positions) >= TACTICAL_POSITIONS_PER_TYPE and
+                len(block_positions) >= TACTICAL_POSITIONS_PER_TYPE):
+            break
+
+        attempts += 1
+
+        board, player = random_reachable_board(8, 30)
+
+        if board_full(board) or check_win(board, P1) or check_win(board, P2):
+            continue
+
+        own_wins = immediate_moves(board, player)
+        opponent_wins = immediate_moves(board, 3 - player)
+
+        if len(own_wins) == 1 and len(win_positions) < TACTICAL_POSITIONS_PER_TYPE:
+            win_positions.append(
+                ([row[:] for row in board], player, own_wins[0])
+            )
+
+        elif (len(own_wins) == 0 and len(opponent_wins) == 1
+              and len(block_positions) < TACTICAL_POSITIONS_PER_TYPE):
+            block_positions.append(
+                ([row[:] for row in board], player, opponent_wins[0])
+            )
+
+    return win_positions, block_positions, attempts
+
+
+def run_tactical_experiment():
+    wins, blocks, attempts = generate_tactical_positions()
+
+    print("Dataset generation attempts:", attempts)
+    print("Immediate-win positions generated:", len(wins))
+    print("Forced-block positions generated:", len(blocks))
+
+    results = {}
+
+    for name, features in CONFIGS.items():
+        win_correct = 0
+        block_correct = 0
+        win_times = []
+        block_times = []
+        win_nodes = []
+        block_nodes = []
+
+        for board, player, correct_move in wins:
+            move, info = choose_move(board, player, features)
+
+            if move == correct_move:
+                win_correct += 1
+
+            win_times.append(info["seconds"])
+            win_nodes.append(info["nodes"])
+
+        for board, player, correct_move in blocks:
+            move, info = choose_move(board, player, features)
+
+            if move == correct_move:
+                block_correct += 1
+
+            block_times.append(info["seconds"])
+            block_nodes.append(info["nodes"])
+
+        total = len(wins) + len(blocks)
+        accuracy = (
+            100 * (win_correct + block_correct) / total
+            if total else 0
+        )
+
+        results[name] = {
+            "win_correct": win_correct,
+            "win_total": len(wins),
+            "block_correct": block_correct,
+            "block_total": len(blocks),
+            "accuracy": accuracy,
+            "avg_win_nodes": statistics.mean(win_nodes) if win_nodes else 0,
+            "avg_block_nodes": statistics.mean(block_nodes) if block_nodes else 0,
+            "avg_seconds": statistics.mean(win_times + block_times)
+                if win_times or block_times else 0
+        }
+
+    return results
+
+
+# -------------------- 7. AI VS AI MATCHES ------------------------
+
+def play_game(features_a, features_b, first_player):
+    board = new_board()
+    player = first_player
+    move_count = 0
+
+    nodes = []
+    times = []
+
+    while move_count < ROWS * COLS:
+        if not legal_moves(board):
+            return EMPTY, move_count, nodes, times
+
+        features = features_a if player == P1 else features_b
+
+        move, info = choose_move(board, player, features)
+
+        if move is None:
+            return EMPTY, move_count, nodes, times
+
+        drop(board, move, player)
+        move_count += 1
+
+        nodes.append(info["nodes"])
+        times.append(info["seconds"])
+
+        if check_win(board, player):
+            return player, move_count, nodes, times
+
+        player = 3 - player
+
+    return EMPTY, move_count, nodes, times
+
+
+def run_match_experiment():
+    results = {}
+
+    print("Selected pairings:", len(PAIRINGS))
+    print("Matches per pairing:", MATCHES_PER_PAIR)
+    print("Total planned games:", TOTAL_GAMES)
+    print()
+
+    completed_games = 0
+
+    for pair_number, (a, b) in enumerate(PAIRINGS, start=1):
+
+        wins_a = 0
+        wins_b = 0
+        draws = 0
+
+        plies = []
+        all_nodes = []
+        all_times = []
+
+        for game_idx in range(MATCHES_PER_PAIR):
+
+            # Three games with A as P1, three with B as P1.
+            if game_idx % 2 == 0:
+                first_player = P1
+            else:
+                first_player = P2
+
+            winner_id, move_count, nodes, times = play_game(
+                CONFIGS[a], CONFIGS[b], first_player
+            )
+
+            # Convert player identity to configuration identity.
+            if winner_id == EMPTY:
+                draws += 1
+            elif winner_id == P1:
+                if first_player == P1:
+                    wins_a += 1
+                else:
+                    wins_b += 1
+            else:
+                if first_player == P1:
+                    wins_b += 1
+                else:
+                    wins_a += 1
+
+            plies.append(move_count)
+            all_nodes.extend(nodes)
+            all_times.extend(times)
+
+            completed_games += 1
+
+        score_a = (
+            100 * (wins_a + 0.5 * draws) / MATCHES_PER_PAIR
+        )
+
+        results[(a, b)] = {
+            "wins_a": wins_a,
+            "wins_b": wins_b,
+            "draws": draws,
+            "score_a": score_a,
+            "avg_plies": statistics.mean(plies),
+            "avg_nodes": statistics.mean(all_nodes) if all_nodes else 0,
+            "avg_seconds": statistics.mean(all_times) if all_times else 0
+        }
+
+        print(
+            f"Pair {pair_number:02d}/14 | "
+            f"Games {completed_games:03d}/84 | "
+            f"{a:15s} vs {b:15s} | "
+            f"W/L/D {wins_a}/{wins_b}/{draws}"
+        )
+
+    return results
+
+
+# -------------------- 8. MAIN EXPERIMENT -------------------------
+
+print("=" * 80)
+print("CONNECT FOUR - HEURISTIC FEATURE ABLATION EXPERIMENT")
+print("=" * 80)
+
+print("Python version:", platform.python_version())
+print("Board size:", ROWS, "x", COLS)
+print("Configurations:", len(CONFIGS))
+print("Selected pairings:", len(PAIRINGS))
+print("Matches per pairing:", MATCHES_PER_PAIR)
+print("Total AI-vs-AI games:", TOTAL_GAMES)
+print("Node budget per move:", NODE_BUDGET)
+print("Tactical target per category:", TACTICAL_POSITIONS_PER_TYPE)
+print("Random seed:", SEED)
+print()
+
+validate_engine()
+
+print("\n[1/2] TACTICAL EXPERIMENT")
+print("-" * 80)
+
+tactical_results = run_tactical_experiment()
+
+print("\nTACTICAL ACCURACY RESULTS")
+print("-" * 105)
+
+print(
+    f"{'Configuration':17s} | {'Win correct':12s} | "
+    f"{'Block correct':13s} | {'Accuracy':10s} | "
+    f"{'Avg nodes':10s} | {'Avg time':10s}"
+)
+
+for name, r in tactical_results.items():
+    avg_nodes = (
+        r["avg_win_nodes"] + r["avg_block_nodes"]
+    ) / 2
+
+    print(
+        f"{name:17s} | "
+        f"{r['win_correct']}/{r['win_total']:<9d} | "
+        f"{r['block_correct']}/{r['block_total']:<10d} | "
+        f"{r['accuracy']:8.2f}% | "
+        f"{avg_nodes:10.1f} | "
+        f"{r['avg_seconds']:9.4f}s"
+    )
+
+print("\n[2/2] AI-vs-AI MATCH EXPERIMENT")
+print("-" * 80)
+
+match_results = run_match_experiment()
+
+print("\nFINAL MATCH PERFORMANCE SUMMARY")
+print("-" * 115)
+
+print(
+    f"{'Config A':17s} | {'Config B':17s} | "
+    f"{'W/L/D':10s} | {'A score':9s} | "
+    f"{'Avg plies':10s} | {'Avg nodes':10s} | {'Avg time':10s}"
+)
+
+for (a, b), r in match_results.items():
+    print(
+        f"{a:17s} | {b:17s} | "
+        f"{r['wins_a']}/{r['wins_b']}/{r['draws']:<4d} | "
+        f"{r['score_a']:7.1f}% | "
+        f"{r['avg_plies']:10.2f} | "
+        f"{r['avg_nodes']:10.1f} | "
+        f"{r['avg_seconds']:9.4f}s"
+    )
+
+print("\n" + "=" * 80)
+print("EXPERIMENT COMPLETED")
+print("=" * 80)
+print("Configurations:", len(CONFIGS))
+print("Pairings:", len(PAIRINGS))
+print("Completed AI-vs-AI games:", TOTAL_GAMES)
+print("Node budget per move:", NODE_BUDGET)
+print("Random seed:", SEED)
+print("Tactical dataset:", len(tactical_results), "configurations tested")
+print("Results are pilot experimental evidence, not proof of novelty.")
+print("=" * 80)
+
