@@ -1,0 +1,146 @@
+==========================================================================================
+EXPERIMENT 3 — SANITY CHECK
+==========================================================================================
+Legal move check: PASSED
+Board restoration check: PASSED
+Node budget check: PASSED
+Test nodes: 3000
+Test completed depth: 6
+
+====================================================================================================
+EXPERIMENT 3 — COMPUTATIONAL-BUDGET ANALYSIS
+====================================================================================================
+Node budgets: [3000, 6000, 12000]
+Maximum depth: 10
+Configurations: ['Baseline', 'Center_only', 'Pairs_Triples', 'Combined']
+Pairings: 3
+Seeds: [42, 123, 2026, 77, 99]
+Games per pairing per seed: 12
+Total expected games: 540
+====================================================================================================
+Progress: 30/540
+Progress: 60/540
+Progress: 90/540
+Progress: 120/540
+Progress: 150/540
+Progress: 180/540
+Progress: 210/540
+Progress: 240/540
+Progress: 270/540
+Progress: 300/540
+Progress: 330/540
+Progress: 360/540
+Progress: 390/540
+Progress: 420/540
+Progress: 450/540
+Progress: 480/540
+Progress: 510/540
+Progress: 540/540
+
+
+==============================================================================================================
+EXPERIMENT 3 — FINAL RESULTS
+==============================================================================================================
+
+NODE BUDGET: 3000 nodes per move
+MATCHUP: Baseline vs Center_only
+Games: 60
+W/L/D: 9/5/46
+Baseline score: 53.33%
+Average nodes per move: A=2076.6, B=2081.7
+Average time per move: A=0.10961s, B=0.11100s
+Average completed depth: A=7.75, B=7.71
+Budget-exhausted moves: A=742, B=744
+
+NODE BUDGET: 3000 nodes per move
+MATCHUP: Baseline vs Combined
+Games: 60
+W/L/D: 3/48/9
+Baseline score: 12.50%
+Average nodes per move: A=2398.8, B=2409.5
+Average time per move: A=0.12424s, B=0.14118s
+Average completed depth: A=7.30, B=6.85
+Budget-exhausted moves: A=801, B=855
+
+NODE BUDGET: 3000 nodes per move
+MATCHUP: Baseline vs Pairs_Triples
+Games: 60
+W/L/D: 11/49/0
+Baseline score: 18.33%
+Average nodes per move: A=2471.9, B=2482.2
+Average time per move: A=0.12881s, B=0.14457s
+Average completed depth: A=7.29, B=6.76
+Budget-exhausted moves: A=837, B=862
+
+NODE BUDGET: 6000 nodes per move
+MATCHUP: Baseline vs Center_only
+Games: 60
+W/L/D: 5/6/49
+Baseline score: 49.17%
+Average nodes per move: A=3754.7, B=3756.0
+Average time per move: A=0.19383s, B=0.19629s
+Average completed depth: A=8.28, B=8.26
+Budget-exhausted moves: A=673, B=678
+
+NODE BUDGET: 6000 nodes per move
+MATCHUP: Baseline vs Combined
+Games: 60
+W/L/D: 1/54/5
+Baseline score: 5.83%
+Average nodes per move: A=4760.8, B=4815.2
+Average time per move: A=0.24972s, B=0.28618s
+Average completed depth: A=7.79, B=7.22
+Budget-exhausted moves: A=791, B=830
+
+NODE BUDGET: 6000 nodes per move
+MATCHUP: Baseline vs Pairs_Triples
+Games: 60
+W/L/D: 15/44/1
+Baseline score: 25.83%
+Average nodes per move: A=4713.4, B=4826.6
+Average time per move: A=0.24815s, B=0.28468s
+Average completed depth: A=7.90, B=7.18
+Budget-exhausted moves: A=774, B=821
+
+NODE BUDGET: 12000 nodes per move
+MATCHUP: Baseline vs Center_only
+Games: 60
+W/L/D: 10/9/41
+Baseline score: 50.83%
+Average nodes per move: A=7075.4, B=7117.9
+Average time per move: A=0.37223s, B=0.37987s
+Average completed depth: A=8.60, B=8.60
+Budget-exhausted moves: A=600, B=608
+
+NODE BUDGET: 12000 nodes per move
+MATCHUP: Baseline vs Combined
+Games: 60
+W/L/D: 0/56/4
+Baseline score: 3.33%
+Average nodes per move: A=8904.2, B=9028.0
+Average time per move: A=0.47122s, B=0.53835s
+Average completed depth: A=8.47, B=7.97
+Budget-exhausted moves: A=609, B=686
+
+NODE BUDGET: 12000 nodes per move
+MATCHUP: Baseline vs Pairs_Triples
+Games: 60
+W/L/D: 5/51/4
+Baseline score: 11.67%
+Average nodes per move: A=8689.5, B=9119.2
+Average time per move: A=0.46080s, B=0.53550s
+Average completed depth: A=8.55, B=7.99
+Budget-exhausted moves: A=644, B=754
+
+==============================================================================================================
+EXPERIMENT INTEGRITY CHECK
+==============================================================================================================
+Total recorded games: 540
+Expected games: 540
+All games recorded: True
+All games have valid outcomes: True
+All node counts within budget: True
+==============================================================================================================
+
+Results dataframe created: E3_RESULTS_DF
+Rows: 540

@@ -1,0 +1,718 @@
+
+# =====================================================================
+# EXPERIMENT 3: COMPUTATIONAL-BUDGET ANALYSIS — FINAL VERSION
+# Connect Four | Minimax + Alpha-Beta | Iterative Deepening
+#
+# Node budgets: 3,000 | 6,000 | 12,000 PER MOVE
+# Maximum search depth: 10
+#
+# Configurations:
+#   Baseline, Center_only, Pairs_Triples, Combined
+#
+# Pairings:
+#   Baseline vs Center_only
+#   Baseline vs Pairs_Triples
+#   Baseline vs Combined
+#
+# Seeds: 5
+# Games per pairing per seed: 12
+# Total games: 3 budgets x 3 pairings x 5 seeds x 12 games
+#             = 540 games
+#
+# Requires your previous setup:
+#   CONFIGS
+#   evaluate(board, player, config)
+# =====================================================================
+
+import random
+import time
+import math
+import statistics
+from collections import defaultdict
+
+# ----------------------- SETTINGS ------------------------------------
+
+E3_BUDGETS = [3000, 6000, 12000]
+E3_MAX_DEPTH = 10
+
+E3_SEEDS = [42, 123, 2026, 77, 99]
+E3_GAMES_PER_SEED = 12
+
+E3_PAIRINGS = [
+    ("Baseline", "Center_only"),
+    ("Baseline", "Pairs_Triples"),
+    ("Baseline", "Combined")
+]
+
+E3_EXPECTED_GAMES = 540
+
+E3_ROWS = 6
+E3_COLS = 7
+E3_EMPTY = 0
+E3_P1 = 1
+E3_P2 = 2
+
+# ----------------------- VALIDATION ----------------------------------
+
+required_configs = [
+    "Baseline",
+    "Center_only",
+    "Pairs_Triples",
+    "Combined"
+]
+
+if "CONFIGS" not in globals():
+    raise NameError("CONFIGS not found. Run your previous setup cell first.")
+
+if "evaluate" not in globals():
+    raise NameError("evaluate() not found. Run your previous evaluation cell first.")
+
+missing = [x for x in required_configs if x not in CONFIGS]
+
+if missing:
+    raise ValueError(f"Missing configurations in CONFIGS: {missing}")
+
+# ----------------------- BOARD FUNCTIONS -----------------------------
+
+def e3_new_board():
+    return [
+        [E3_EMPTY for _ in range(E3_COLS)]
+        for _ in range(E3_ROWS)
+    ]
+
+
+def e3_legal_moves(board):
+    return [
+        c for c in range(E3_COLS)
+        if board[0][c] == E3_EMPTY
+    ]
+
+
+def e3_drop(board, col, player):
+    for r in range(E3_ROWS - 1, -1, -1):
+        if board[r][col] == E3_EMPTY:
+            board[r][col] = player
+            return r
+    raise ValueError("Illegal move: column is full.")
+
+
+def e3_undo(board, row, col):
+    board[row][col] = E3_EMPTY
+
+
+def e3_winner(board):
+
+    # Horizontal
+    for r in range(E3_ROWS):
+        for c in range(E3_COLS - 3):
+            p = board[r][c]
+            if p != E3_EMPTY and all(
+                board[r][c+i] == p for i in range(4)
+            ):
+                return p
+
+    # Vertical
+    for r in range(E3_ROWS - 3):
+        for c in range(E3_COLS):
+            p = board[r][c]
+            if p != E3_EMPTY and all(
+                board[r+i][c] == p for i in range(4)
+            ):
+                return p
+
+    # Diagonal down-right
+    for r in range(E3_ROWS - 3):
+        for c in range(E3_COLS - 3):
+            p = board[r][c]
+            if p != E3_EMPTY and all(
+                board[r+i][c+i] == p for i in range(4)
+            ):
+                return p
+
+    # Diagonal up-right
+    for r in range(3, E3_ROWS):
+        for c in range(E3_COLS - 3):
+            p = board[r][c]
+            if p != E3_EMPTY and all(
+                board[r-i][c+i] == p for i in range(4)
+            ):
+                return p
+
+    return E3_EMPTY
+
+
+def e3_is_draw(board):
+    return len(e3_legal_moves(board)) == 0
+
+
+# ----------------------- EVALUATION ADAPTER --------------------------
+# Uses your existing Experiment 1/2 evaluation function.
+# Expected signature: evaluate(board, player, CONFIGS[config_name])
+
+def e3_evaluate(board, player, config_name):
+    return evaluate(board, player, CONFIGS[config_name])
+
+
+# ----------------------- NODE BUDGET COUNTER ------------------------
+
+class E3BudgetExceeded(Exception):
+    pass
+
+
+class E3Counter:
+
+    def __init__(self, budget):
+        self.budget = budget
+        self.nodes = 0
+
+    def visit(self):
+        if self.nodes >= self.budget:
+            raise E3BudgetExceeded
+
+        self.nodes += 1
+
+
+# ----------------------- MOVE ORDERING ------------------------------
+
+def e3_order_moves(moves, rng):
+
+    # Prefer center columns; randomize ties reproducibly.
+    groups = defaultdict(list)
+
+    for c in moves:
+        groups[abs(c - E3_COLS // 2)].append(c)
+
+    ordered = []
+
+    for distance in sorted(groups):
+        group = groups[distance][:]
+        rng.shuffle(group)
+        ordered.extend(group)
+
+    return ordered
+
+
+# ----------------------- MINIMAX + ALPHA-BETA -----------------------
+
+def e3_minimax(
+    board,
+    depth,
+    alpha,
+    beta,
+    current_player,
+    root_player,
+    config_name,
+    counter,
+    rng
+):
+
+    counter.visit()
+
+    winner = e3_winner(board)
+
+    if winner == root_player:
+        return 100000 + depth
+
+    if winner != E3_EMPTY:
+        return -100000 - depth
+
+    if depth == 0 or e3_is_draw(board):
+        return e3_evaluate(board, root_player, config_name)
+
+    moves = e3_order_moves(e3_legal_moves(board), rng)
+
+    # Root player's turn: maximize
+    if current_player == root_player:
+
+        value = -math.inf
+
+        for col in moves:
+
+            row = e3_drop(board, col, current_player)
+
+            try:
+                score = e3_minimax(
+                    board,
+                    depth - 1,
+                    alpha,
+                    beta,
+                    3 - current_player,
+                    root_player,
+                    config_name,
+                    counter,
+                    rng
+                )
+            finally:
+                e3_undo(board, row, col)
+
+            value = max(value, score)
+            alpha = max(alpha, value)
+
+            if alpha >= beta:
+                break
+
+        return value
+
+    # Opponent's turn: minimize
+    else:
+
+        value = math.inf
+
+        for col in moves:
+
+            row = e3_drop(board, col, current_player)
+
+            try:
+                score = e3_minimax(
+                    board,
+                    depth - 1,
+                    alpha,
+                    beta,
+                    3 - current_player,
+                    root_player,
+                    config_name,
+                    counter,
+                    rng
+                )
+            finally:
+                e3_undo(board, row, col)
+
+            value = min(value, score)
+            beta = min(beta, value)
+
+            if alpha >= beta:
+                break
+
+        return value
+
+
+# ----------------------- ITERATIVE DEEPENING ------------------------
+
+def e3_choose_move(
+    board,
+    player,
+    config_name,
+    node_budget,
+    rng
+):
+
+    legal = e3_legal_moves(board)
+
+    if not legal:
+        return None, {
+            "nodes": 0,
+            "time": 0.0,
+            "completed_depth": 0,
+            "budget_exhausted": False
+        }
+
+    counter = E3Counter(node_budget)
+    start_time = time.perf_counter()
+
+    # Legal fallback in case even depth 1 cannot complete
+    best_move = min(
+        legal,
+        key=lambda c: abs(c - E3_COLS // 2)
+    )
+
+    completed_depth = 0
+    budget_exhausted = False
+
+    # Search depth 1, 2, ... up to maximum depth
+    for depth in range(1, E3_MAX_DEPTH + 1):
+
+        iteration_best_move = None
+        iteration_best_score = -math.inf
+
+        alpha = -math.inf
+        beta = math.inf
+
+        try:
+
+            moves = e3_order_moves(legal, rng)
+
+            for col in moves:
+
+                row = e3_drop(board, col, player)
+
+                try:
+                    score = e3_minimax(
+                        board,
+                        depth - 1,
+                        alpha,
+                        beta,
+                        3 - player,
+                        player,
+                        config_name,
+                        counter,
+                        rng
+                    )
+                finally:
+                    e3_undo(board, row, col)
+
+                if score > iteration_best_score:
+                    iteration_best_score = score
+                    iteration_best_move = col
+
+                alpha = max(alpha, iteration_best_score)
+
+            # Commit only after the whole depth finishes
+            if iteration_best_move is not None:
+                best_move = iteration_best_move
+                completed_depth = depth
+
+        except E3BudgetExceeded:
+
+            budget_exhausted = True
+            break
+
+    elapsed = time.perf_counter() - start_time
+
+    return best_move, {
+        "nodes": counter.nodes,
+        "time": elapsed,
+        "completed_depth": completed_depth,
+        "budget_exhausted": budget_exhausted
+    }
+
+
+# ----------------------- SANITY TEST ---------------------------------
+
+print("=" * 90)
+print("EXPERIMENT 3 — SANITY CHECK")
+print("=" * 90)
+
+test_board = e3_new_board()
+test_snapshot = [row[:] for row in test_board]
+
+test_move, test_info = e3_choose_move(
+    test_board,
+    E3_P1,
+    "Baseline",
+    3000,
+    random.Random(42)
+)
+
+assert test_move in e3_legal_moves(test_board)
+assert test_board == test_snapshot
+assert 0 <= test_info["nodes"] <= 3000
+assert 0 <= test_info["completed_depth"] <= E3_MAX_DEPTH
+
+print("Legal move check: PASSED")
+print("Board restoration check: PASSED")
+print("Node budget check: PASSED")
+print("Test nodes:", test_info["nodes"])
+print("Test completed depth:", test_info["completed_depth"])
+
+
+# ----------------------- ONE AI VS AI GAME ---------------------------
+
+def e3_play_game(
+    config_a,
+    config_b,
+    budget,
+    seed,
+    game_index
+):
+
+    rng = random.Random(seed)
+
+    board = e3_new_board()
+
+    # Balanced starting player:
+    # 6 games P1 starts, 6 games P2 starts per seed/matchup.
+    first_player = (
+        E3_P1 if game_index % 2 == 0 else E3_P2
+    )
+
+    player = first_player
+
+    metrics = {
+        "A_nodes": [],
+        "B_nodes": [],
+        "A_time": [],
+        "B_time": [],
+        "A_depth": [],
+        "B_depth": [],
+        "A_exhausted": 0,
+        "B_exhausted": 0
+    }
+
+    while True:
+
+        config_name = (
+            config_a if player == E3_P1 else config_b
+        )
+
+        move, info = e3_choose_move(
+            board,
+            player,
+            config_name,
+            budget,
+            rng
+        )
+
+        if player == E3_P1:
+
+            metrics["A_nodes"].append(info["nodes"])
+            metrics["A_time"].append(info["time"])
+            metrics["A_depth"].append(info["completed_depth"])
+
+            metrics["A_exhausted"] += int(
+                info["budget_exhausted"]
+            )
+
+        else:
+
+            metrics["B_nodes"].append(info["nodes"])
+            metrics["B_time"].append(info["time"])
+            metrics["B_depth"].append(info["completed_depth"])
+
+            metrics["B_exhausted"] += int(
+                info["budget_exhausted"]
+            )
+
+        row = e3_drop(board, move, player)
+
+        winner = e3_winner(board)
+
+        if winner == E3_P1:
+            return {
+                "winner": "A",
+                "first_player": first_player,
+                **metrics
+            }
+
+        if winner == E3_P2:
+            return {
+                "winner": "B",
+                "first_player": first_player,
+                **metrics
+            }
+
+        if e3_is_draw(board):
+            return {
+                "winner": "DRAW",
+                "first_player": first_player,
+                **metrics
+            }
+
+        player = 3 - player
+
+
+# ----------------------- EXPERIMENT RUNNER ---------------------------
+
+def run_experiment_3():
+
+    records = []
+
+    total_games = (
+        len(E3_BUDGETS)
+        * len(E3_PAIRINGS)
+        * len(E3_SEEDS)
+        * E3_GAMES_PER_SEED
+    )
+
+    print("\n" + "=" * 100)
+    print("EXPERIMENT 3 — COMPUTATIONAL-BUDGET ANALYSIS")
+    print("=" * 100)
+
+    print("Node budgets:", E3_BUDGETS)
+    print("Maximum depth:", E3_MAX_DEPTH)
+    print("Configurations:", required_configs)
+    print("Pairings:", len(E3_PAIRINGS))
+    print("Seeds:", E3_SEEDS)
+    print("Games per pairing per seed:", E3_GAMES_PER_SEED)
+    print("Total expected games:", total_games)
+
+    print("=" * 100)
+
+    game_number = 0
+
+    for budget in E3_BUDGETS:
+
+        for pairing_index, (config_a, config_b) in enumerate(
+            E3_PAIRINGS
+        ):
+
+            for seed in E3_SEEDS:
+
+                for game_index in range(E3_GAMES_PER_SEED):
+
+                    game_number += 1
+
+                    # Deterministic and unique random stream
+                    game_seed = (
+                        seed * 100000
+                        + pairing_index * 1000
+                        + game_index
+                    )
+
+                    result = e3_play_game(
+                        config_a,
+                        config_b,
+                        budget,
+                        game_seed,
+                        game_index
+                    )
+
+                    records.append({
+                        "budget": budget,
+                        "config_a": config_a,
+                        "config_b": config_b,
+                        "seed": seed,
+                        "game": game_index + 1,
+                        **result
+                    })
+
+                    if game_number % 30 == 0:
+                        print(
+                            f"Progress: {game_number}/{total_games}"
+                        )
+
+    return records
+
+
+# ----------------------- RESULTS SUMMARY -----------------------------
+
+def summarize_experiment_3(records):
+
+    grouped = defaultdict(list)
+
+    for r in records:
+
+        key = (
+            r["budget"],
+            r["config_a"],
+            r["config_b"]
+        )
+
+        grouped[key].append(r)
+
+    print("\n")
+    print("=" * 110)
+    print("EXPERIMENT 3 — FINAL RESULTS")
+    print("=" * 110)
+
+    for key in sorted(grouped):
+
+        budget, config_a, config_b = key
+        games = grouped[key]
+
+        wins_a = sum(x["winner"] == "A" for x in games)
+        wins_b = sum(x["winner"] == "B" for x in games)
+        draws = sum(x["winner"] == "DRAW" for x in games)
+
+        n = len(games)
+
+        score_a = (
+            wins_a + 0.5 * draws
+        ) / n * 100
+
+        all_a_nodes = [
+            v for x in games for v in x["A_nodes"]
+        ]
+
+        all_b_nodes = [
+            v for x in games for v in x["B_nodes"]
+        ]
+
+        all_a_time = [
+            v for x in games for v in x["A_time"]
+        ]
+
+        all_b_time = [
+            v for x in games for v in x["B_time"]
+        ]
+
+        all_a_depth = [
+            v for x in games for v in x["A_depth"]
+        ]
+
+        all_b_depth = [
+            v for x in games for v in x["B_depth"]
+        ]
+
+        exhausted_a = sum(
+            x["A_exhausted"] for x in games
+        )
+
+        exhausted_b = sum(
+            x["B_exhausted"] for x in games
+        )
+
+        print(f"\nNODE BUDGET: {budget} nodes per move")
+        print(f"MATCHUP: {config_a} vs {config_b}")
+        print(f"Games: {n}")
+        print(f"W/L/D: {wins_a}/{wins_b}/{draws}")
+        print(f"{config_a} score: {score_a:.2f}%")
+
+        print(
+            f"Average nodes per move: "
+            f"A={statistics.mean(all_a_nodes):.1f}, "
+            f"B={statistics.mean(all_b_nodes):.1f}"
+        )
+
+        print(
+            f"Average time per move: "
+            f"A={statistics.mean(all_a_time):.5f}s, "
+            f"B={statistics.mean(all_b_time):.5f}s"
+        )
+
+        print(
+            f"Average completed depth: "
+            f"A={statistics.mean(all_a_depth):.2f}, "
+            f"B={statistics.mean(all_b_depth):.2f}"
+        )
+
+        print(
+            f"Budget-exhausted moves: "
+            f"A={exhausted_a}, B={exhausted_b}"
+        )
+
+    # Overall integrity checks
+    print("\n" + "=" * 110)
+    print("EXPERIMENT INTEGRITY CHECK")
+    print("=" * 110)
+
+    print("Total recorded games:", len(records))
+    print("Expected games:", E3_EXPECTED_GAMES)
+    print("All games recorded:", len(records) == E3_EXPECTED_GAMES)
+
+    print(
+        "All games have valid outcomes:",
+        all(
+            x["winner"] in ("A", "B", "DRAW")
+            for x in records
+        )
+    )
+
+    print(
+        "All node counts within budget:",
+        all(
+            all(v <= x["budget"] for v in x["A_nodes"])
+            and all(v <= x["budget"] for v in x["B_nodes"])
+            for x in records
+        )
+    )
+
+    print("=" * 110)
+
+
+# ----------------------- RUN EXPERIMENT 3 ----------------------------
+
+E3_RESULTS = run_experiment_3()
+
+summarize_experiment_3(E3_RESULTS)
+
+# Preserve results in a dataframe for later analysis/export
+try:
+    import pandas as pd
+
+    E3_RESULTS_DF = pd.DataFrame(E3_RESULTS)
+
+    print("\nResults dataframe created: E3_RESULTS_DF")
+    print("Rows:", len(E3_RESULTS_DF))
+
+except ImportError:
+    print("Pandas not available; E3_RESULTS list is preserved.")
