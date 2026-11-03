@@ -1,0 +1,482 @@
+
+# ================================================================
+# EXPERIMENT 2 - FINAL CORRECTED VERSION
+# SEARCH-DEPTH ANALYSIS IN CONNECT FOUR
+# Multiple Seeds + Separate Player Resource Metrics
+# ================================================================
+
+import random
+import time
+import statistics
+
+# -------------------- 1. SETTINGS -------------------------------
+
+DEPTHS = [2, 4, 6]
+
+EXP2_CONFIGS = [
+    "Baseline",
+    "Center_only",
+    "Pairs_Triples",
+    "Combined"
+]
+
+EXP2_PAIRINGS = [
+    ("Baseline", "Center_only"),
+    ("Baseline", "Pairs_Triples"),
+    ("Baseline", "Combined")
+]
+
+SEEDS = [42, 123, 2026, 77, 99]
+
+GAMES_PER_PAIR_PER_SEED = 12
+EXP2_NODE_BUDGET = 12000
+
+TOTAL_GAMES = (
+    len(DEPTHS)
+    * len(EXP2_PAIRINGS)
+    * len(SEEDS)
+    * GAMES_PER_PAIR_PER_SEED
+)
+
+# Check that the Experiment 1 engine is available.
+required_names = [
+    "CONFIGS", "ROWS", "COLS", "P1", "P2", "EMPTY",
+    "new_board", "legal_moves", "drop", "undo",
+    "check_win", "board_full", "evaluate",
+    "SearchCounter", "BudgetExceeded"
+]
+
+missing = [name for name in required_names if name not in globals()]
+
+if missing:
+    raise RuntimeError(
+        "Missing Experiment 1 definitions: " + ", ".join(missing)
+        + ". Run your Experiment 1 engine cell first."
+    )
+
+assert all(name in CONFIGS for name in EXP2_CONFIGS)
+assert len(SEEDS) == len(set(SEEDS))
+
+# -------------------- 2. SEEDED MOVE ORDERING -------------------
+
+def seeded_move_order(board, rng):
+
+    moves = legal_moves(board)
+    groups = {}
+
+    for col in moves:
+        distance = abs(col - COLS // 2)
+        groups.setdefault(distance, []).append(col)
+
+    ordered = []
+
+    for distance in sorted(groups):
+        group = groups[distance][:]
+        rng.shuffle(group)
+        ordered.extend(group)
+
+    return ordered
+
+
+# -------------------- 3. SEEDED MINIMAX --------------------------
+
+def minimax_seeded(
+    board, depth, alpha, beta, maximizing,
+    player, features, counter, rng, ply=0
+):
+
+    counter.visit()
+
+    opponent = 3 - player
+
+    if check_win(board, player):
+        return 100000 - ply
+
+    if check_win(board, opponent):
+        return -100000 + ply
+
+    if board_full(board):
+        return 0
+
+    if depth == 0:
+        return evaluate(board, player, features)
+
+    moves = seeded_move_order(board, rng)
+
+    if maximizing:
+
+        value = -float("inf")
+
+        for col in moves:
+
+            row = drop(board, col, player)
+
+            try:
+                child = minimax_seeded(
+                    board, depth - 1,
+                    alpha, beta, False,
+                    player, features, counter,
+                    rng, ply + 1
+                )
+            finally:
+                undo(board, row, col)
+
+            value = max(value, child)
+            alpha = max(alpha, value)
+
+            if alpha >= beta:
+                break
+
+        return value
+
+    else:
+
+        value = float("inf")
+
+        for col in moves:
+
+            row = drop(board, col, opponent)
+
+            try:
+                child = minimax_seeded(
+                    board, depth - 1,
+                    alpha, beta, True,
+                    player, features, counter,
+                    rng, ply + 1
+                )
+            finally:
+                undo(board, row, col)
+
+            value = min(value, child)
+            beta = min(beta, value)
+
+            if alpha >= beta:
+                break
+
+        return value
+
+
+# -------------------- 4. FIXED-DEPTH MOVE SELECTION -------------
+
+def choose_move_exp2(board, player, features, depth, rng):
+
+    moves = seeded_move_order(board, rng)
+
+    if not moves:
+        return None, {
+            "nodes": 0,
+            "seconds": 0.0,
+            "completed": True
+        }
+
+    snapshot = [row[:] for row in board]
+    start = time.perf_counter()
+
+    counter = SearchCounter(EXP2_NODE_BUDGET)
+
+    best_move = moves[0]
+    best_value = -float("inf")
+
+    alpha = -float("inf")
+    beta = float("inf")
+
+    completed = True
+
+    try:
+
+        for col in moves:
+
+            row = drop(board, col, player)
+
+            try:
+                value = minimax_seeded(
+                    board, depth - 1,
+                    alpha, beta, False,
+                    player, features, counter,
+                    rng, 1
+                )
+            finally:
+                undo(board, row, col)
+
+            if value > best_value:
+                best_value = value
+                best_move = col
+
+            alpha = max(alpha, best_value)
+
+    except BudgetExceeded:
+        completed = False
+
+    finally:
+        for r in range(ROWS):
+            board[r][:] = snapshot[r]
+
+    elapsed = time.perf_counter() - start
+
+    return best_move, {
+        "nodes": counter.nodes,
+        "seconds": elapsed,
+        "completed": completed
+    }
+
+
+# -------------------- 5. PLAY ONE GAME --------------------------
+
+def play_exp2_game(config_a, config_b, first_player, depth, seed):
+
+    board = new_board()
+    player = first_player
+    rng = random.Random(seed)
+
+    move_count = 0
+    winner = EMPTY
+
+    player_nodes = {P1: [], P2: []}
+    player_times = {P1: [], P2: []}
+
+    player_completed = {P1: 0, P2: 0}
+    player_incomplete = {P1: 0, P2: 0}
+
+    while move_count < ROWS * COLS:
+
+        if not legal_moves(board):
+            break
+
+        features = (
+            CONFIGS[config_a] if player == P1
+            else CONFIGS[config_b]
+        )
+
+        move, info = choose_move_exp2(
+            board, player, features, depth, rng
+        )
+
+        if move is None:
+            break
+
+        player_nodes[player].append(info["nodes"])
+        player_times[player].append(info["seconds"])
+
+        if info["completed"]:
+            player_completed[player] += 1
+        else:
+            player_incomplete[player] += 1
+
+        drop(board, move, player)
+        move_count += 1
+
+        if check_win(board, player):
+            winner = player
+            break
+
+        player = 3 - player
+
+    return {
+        "winner": winner,
+        "plies": move_count,
+        "nodes_p1": player_nodes[P1],
+        "nodes_p2": player_nodes[P2],
+        "times_p1": player_times[P1],
+        "times_p2": player_times[P2],
+        "completed_p1": player_completed[P1],
+        "completed_p2": player_completed[P2],
+        "incomplete_p1": player_incomplete[P1],
+        "incomplete_p2": player_incomplete[P2]
+    }
+
+
+# -------------------- 6. STATISTICS HELPER ----------------------
+
+def safe_mean(values):
+    return statistics.mean(values) if values else 0.0
+
+
+# -------------------- 7. RUN EXPERIMENT -------------------------
+
+def run_exp2():
+
+    results = {}
+    completed_games = 0
+
+    print("=" * 110)
+    print("CONNECT FOUR - FINAL EXTENDED SEARCH-DEPTH ANALYSIS")
+    print("=" * 110)
+
+    print("Depths:", DEPTHS)
+    print("Configurations:", EXP2_CONFIGS)
+    print("Pairings:", len(EXP2_PAIRINGS))
+    print("Seeds:", SEEDS)
+    print("Games per pairing per seed:", GAMES_PER_PAIR_PER_SEED)
+    print("Total planned games:", TOTAL_GAMES)
+    print("Node budget per move:", EXP2_NODE_BUDGET)
+    print()
+
+    for depth in DEPTHS:
+
+        print("\n" + "-" * 110)
+        print("SEARCH DEPTH:", depth)
+        print("-" * 110)
+
+        for pair_index, (a, b) in enumerate(EXP2_PAIRINGS):
+
+            wins_a = 0
+            wins_b = 0
+            draws = 0
+
+            plies_list = []
+
+            nodes_a = []
+            nodes_b = []
+
+            times_a = []
+            times_b = []
+
+            completed_a = 0
+            completed_b = 0
+
+            incomplete_a = 0
+            incomplete_b = 0
+
+            for seed in SEEDS:
+
+                for game_idx in range(GAMES_PER_PAIR_PER_SEED):
+
+                    first_player = (
+                        P1 if game_idx % 2 == 0 else P2
+                    )
+
+                    # Reproducible random stream for each game.
+                    game_seed = (
+                        seed * 1000000
+                        + depth * 10000
+                        + pair_index * 100
+                        + game_idx
+                    )
+
+                    result = play_exp2_game(
+                        a, b, first_player,
+                        depth, game_seed
+                    )
+
+                    winner = result["winner"]
+
+                    # P1 always represents Configuration A.
+                    # P2 always represents Configuration B.
+                    if winner == P1:
+                        wins_a += 1
+                    elif winner == P2:
+                        wins_b += 1
+                    else:
+                        draws += 1
+
+                    plies_list.append(result["plies"])
+
+                    nodes_a.extend(result["nodes_p1"])
+                    nodes_b.extend(result["nodes_p2"])
+
+                    times_a.extend(result["times_p1"])
+                    times_b.extend(result["times_p2"])
+
+                    completed_a += result["completed_p1"]
+                    completed_b += result["completed_p2"]
+
+                    incomplete_a += result["incomplete_p1"]
+                    incomplete_b += result["incomplete_p2"]
+
+                    completed_games += 1
+
+            pair_games = len(SEEDS) * GAMES_PER_PAIR_PER_SEED
+
+            score_a = (
+                100 * (wins_a + 0.5 * draws) / pair_games
+            )
+
+            results[(depth, a, b)] = {
+
+                "wins_a": wins_a,
+                "wins_b": wins_b,
+                "draws": draws,
+                "score_a": score_a,
+
+                "avg_plies": safe_mean(plies_list),
+
+                "avg_nodes_a": safe_mean(nodes_a),
+                "avg_nodes_b": safe_mean(nodes_b),
+
+                "avg_time_a": safe_mean(times_a),
+                "avg_time_b": safe_mean(times_b),
+
+                "completed_a": completed_a,
+                "completed_b": completed_b,
+
+                "incomplete_a": incomplete_a,
+                "incomplete_b": incomplete_b,
+
+                "games": pair_games
+            }
+
+            print(
+                f"Depth {depth} | {a:15s} vs {b:15s} | "
+                f"W/L/D {wins_a}/{wins_b}/{draws} | "
+                f"A score {score_a:5.1f}% | "
+                f"A nodes {safe_mean(nodes_a):8.1f} | "
+                f"B nodes {safe_mean(nodes_b):8.1f}"
+            )
+
+    # Return BOTH values to the calling scope.
+    return results, completed_games
+
+
+# -------------------- 8. EXECUTE EXPERIMENT ---------------------
+
+depth_results_extended, completed_games = run_exp2()
+
+
+# -------------------- 9. FINAL SUMMARY --------------------------
+
+print("\n" + "=" * 160)
+print("FINAL SEARCH-DEPTH AND PLAYER RESOURCE SUMMARY")
+print("=" * 160)
+
+print(
+    f"{'Depth':5s} | {'Config A':15s} | {'Config B':15s} | "
+    f"{'W/L/D':10s} | {'A score':8s} | "
+    f"{'A nodes':9s} | {'B nodes':9s} | "
+    f"{'A time':9s} | {'B time':9s} | "
+    f"{'A complete':10s} | {'B complete':10s} | "
+    f"{'Incomplete':10s}"
+)
+
+for (depth, a, b), r in depth_results_extended.items():
+
+    total_incomplete = (
+        r["incomplete_a"] + r["incomplete_b"]
+    )
+
+    print(
+        f"{depth:<5d} | {a:15s} | {b:15s} | "
+        f"{r['wins_a']}/{r['wins_b']}/{r['draws']:<4d} | "
+        f"{r['score_a']:6.1f}% | "
+        f"{r['avg_nodes_a']:9.1f} | "
+        f"{r['avg_nodes_b']:9.1f} | "
+        f"{r['avg_time_a']:8.4f}s | "
+        f"{r['avg_time_b']:8.4f}s | "
+        f"{r['completed_a']:10d} | "
+        f"{r['completed_b']:10d} | "
+        f"{total_incomplete:10d}"completed_games
+    )
+
+print("\n" + "=" * 110)
+print("FINAL EXPERIMENT 2 COMPLETED")
+print("=" * 110)
+print("Total completed games:", completed_games)
+print("Expected games:", TOTAL_GAMES)
+print("All games completed:",  == TOTAL_GAMES)
+print("Search depths:", DEPTHS)
+print("Random seeds:", SEEDS)
+print("Node budget per move:", EXP2_NODE_BUDGET)
+print("Incomplete move searches:", sum(
+    r["incomplete_a"] + r["incomplete_b"]
+    for r in depth_results_extended.values()
+))
+print("=" * 110)
