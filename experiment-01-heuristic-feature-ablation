@@ -1,1 +1,0 @@
-Experiment 1 evaluates the impact of heuristic feature combinations on Connect Four AI performance using Minimax with Alpha-Beta Pruning. It compares eight configurations, including Baseline, Center Control, Pair Patterns, Triple Patterns, and Combined features. The experiment consists of 84 AI-vs-AI games using a fixed node budget of 12,000 per move.
