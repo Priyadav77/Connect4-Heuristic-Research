@@ -1,0 +1,161 @@
+ ====================================================================================================
+EXPERIMENT 4 — STATISTICAL ANALYSIS AND ROBUSTNESS
+====================================================================================================
+Input games: 540
+Budgets: [np.int64(3000), np.int64(6000), np.int64(12000)]
+Seeds: [np.int64(42), np.int64(77), np.int64(99), np.int64(123), np.int64(2026)]
+Matchups: [['Baseline', 'Center_only'], ['Baseline', 'Pairs_Triples'], ['Baseline', 'Combined']]
+Input validation: PASSED
+
+====================================================================================================
+TABLE 1 — POOLED GAME RESULTS
+====================================================================================================
+ Budget                   Matchup  Games  Baseline_Wins  Baseline_Losses  Draws  Baseline_Win_Rate_%  Baseline_Loss_Rate_%  Draw_Rate_%  Baseline_Score_%
+   3000   Baseline vs Center_only     60              9                5     46                15.00                  8.33        76.67             53.33
+   3000      Baseline vs Combined     60              3               48      9                 5.00                 80.00        15.00             12.50
+   3000 Baseline vs Pairs_Triples     60             11               49      0                18.33                 81.67         0.00             18.33
+   6000   Baseline vs Center_only     60              5                6     49                 8.33                 10.00        81.67             49.17
+   6000      Baseline vs Combined     60              1               54      5                 1.67                 90.00         8.33              5.83
+   6000 Baseline vs Pairs_Triples     60             15               44      1                25.00                 73.33         1.67             25.83
+  12000   Baseline vs Center_only     60             10                9     41                16.67                 15.00        68.33             50.83
+  12000      Baseline vs Combined     60              0               56      4                 0.00                 93.33         6.67              3.33
+  12000 Baseline vs Pairs_Triples     60              5               51      4                 8.33                 85.00         6.67             11.67
+
+====================================================================================================
+TABLE 2 — SEED-LEVEL BASELINE SCORES
+====================================================================================================
+ Budget                   Matchup  Seed  Games  Baseline_Score
+   3000   Baseline vs Center_only    42     12           50.00
+   3000   Baseline vs Center_only    77     12           58.33
+   3000   Baseline vs Center_only    99     12           50.00
+   3000   Baseline vs Center_only   123     12           58.33
+   3000   Baseline vs Center_only  2026     12           50.00
+   3000      Baseline vs Combined    42     12            4.17
+   3000      Baseline vs Combined    77     12           12.50
+   3000      Baseline vs Combined    99     12            8.33
+   3000      Baseline vs Combined   123     12           16.67
+   3000      Baseline vs Combined  2026     12           20.83
+   3000 Baseline vs Pairs_Triples    42     12            8.33
+   3000 Baseline vs Pairs_Triples    77     12           25.00
+   3000 Baseline vs Pairs_Triples    99     12           16.67
+   3000 Baseline vs Pairs_Triples   123     12           25.00
+   3000 Baseline vs Pairs_Triples  2026     12           16.67
+   6000   Baseline vs Center_only    42     12           58.33
+   6000   Baseline vs Center_only    77     12           41.67
+   6000   Baseline vs Center_only    99     12           41.67
+   6000   Baseline vs Center_only   123     12           54.17
+   6000   Baseline vs Center_only  2026     12           50.00
+   6000      Baseline vs Combined    42     12            0.00
+   6000      Baseline vs Combined    77     12            0.00
+   6000      Baseline vs Combined    99     12            4.17
+   6000      Baseline vs Combined   123     12           12.50
+   6000      Baseline vs Combined  2026     12           12.50
+   6000 Baseline vs Pairs_Triples    42     12           20.83
+   6000 Baseline vs Pairs_Triples    77     12           41.67
+   6000 Baseline vs Pairs_Triples    99     12           25.00
+   6000 Baseline vs Pairs_Triples   123     12           16.67
+   6000 Baseline vs Pairs_Triples  2026     12           25.00
+  12000   Baseline vs Center_only    42     12           58.33
+  12000   Baseline vs Center_only    77     12           41.67
+  12000   Baseline vs Center_only    99     12           45.83
+  12000   Baseline vs Center_only   123     12           58.33
+  12000   Baseline vs Center_only  2026     12           50.00
+  12000      Baseline vs Combined    42     12            0.00
+  12000      Baseline vs Combined    77     12            0.00
+  12000      Baseline vs Combined    99     12            0.00
+  12000      Baseline vs Combined   123     12            8.33
+  12000      Baseline vs Combined  2026     12            8.33
+  12000 Baseline vs Pairs_Triples    42     12           12.50
+  12000 Baseline vs Pairs_Triples    77     12           16.67
+  12000 Baseline vs Pairs_Triples    99     12            8.33
+  12000 Baseline vs Pairs_Triples   123     12           12.50
+  12000 Baseline vs Pairs_Triples  2026     12            8.33
+
+====================================================================================================
+TABLE 3 — MEAN SCORE AND 95% CONFIDENCE INTERVAL
+====================================================================================================
+ Budget                   Matchup  Seed_Count  Mean_Score_%  SD_%  SE_%  CI_Lower_%  CI_Upper_%
+   3000   Baseline vs Center_only           5        53.333 4.564 2.041      47.666      59.001
+   3000      Baseline vs Combined           5        12.500 6.588 2.946       4.320      20.680
+   3000 Baseline vs Pairs_Triples           5        18.333 6.972 3.118       9.676      26.990
+   6000   Baseline vs Center_only           5        49.167 7.454 3.333      39.912      58.421
+   6000      Baseline vs Combined           5         5.833 6.319 2.826      -2.013      13.679
+   6000 Baseline vs Pairs_Triples           5        25.833 9.501 4.249      14.036      37.631
+  12000   Baseline vs Center_only           5        50.833 7.454 3.333      41.579      60.088
+  12000      Baseline vs Combined           5         3.333 4.564 2.041      -2.334       9.001
+  12000 Baseline vs Pairs_Triples           5        11.667 3.486 1.559       7.338      15.995
+
+====================================================================================================
+TABLE 4 — SEED-WISE ROBUSTNESS
+====================================================================================================
+ Budget                   Matchup  Mean_Score_%  SD_%     Consistency
+   3000   Baseline vs Center_only        53.333 4.564 More consistent
+   3000      Baseline vs Combined        12.500 6.588 More consistent
+   3000 Baseline vs Pairs_Triples        18.333 6.972 More consistent
+   6000   Baseline vs Center_only        49.167 7.454 More consistent
+   6000      Baseline vs Combined         5.833 6.319 More consistent
+   6000 Baseline vs Pairs_Triples        25.833 9.501 More consistent
+  12000   Baseline vs Center_only        50.833 7.454 More consistent
+  12000      Baseline vs Combined         3.333 4.564 More consistent
+  12000 Baseline vs Pairs_Triples        11.667 3.486 More consistent
+
+====================================================================================================
+TABLE 5 — FRIEDMAN TEST: EFFECT OF NODE BUDGET
+====================================================================================================
+                  Matchup     Test  Statistic  p_value  Significant_0.05
+  Baseline vs Center_only Friedman    2.00000  0.36788             False
+     Baseline vs Combined Friedman    9.33333  0.00940              True
+Baseline vs Pairs_Triples Friedman    6.40000  0.04076              True
+
+====================================================================================================
+TABLE 6 — PAIRWISE WILCOXON TESTS WITH HOLM CORRECTION
+====================================================================================================
+                  Matchup    Comparison  Statistic  Raw_p_value  Holm_Adjusted_p  Significant_0.05
+  Baseline vs Center_only  3000 vs 6000        3.0       0.6250           1.0000             False
+  Baseline vs Center_only 3000 vs 12000        2.0       0.7500           1.0000             False
+  Baseline vs Center_only 6000 vs 12000        0.0       0.5000           1.0000             False
+     Baseline vs Combined  3000 vs 6000        0.0       0.0625           0.5625             False
+     Baseline vs Combined 3000 vs 12000        0.0       0.0625           0.5625             False
+     Baseline vs Combined 6000 vs 12000        0.0       0.2500           1.0000             False
+Baseline vs Pairs_Triples  3000 vs 6000        2.0       0.2500           1.0000             False
+Baseline vs Pairs_Triples 3000 vs 12000        1.0       0.1250           0.7500             False
+Baseline vs Pairs_Triples 6000 vs 12000        0.0       0.0625           0.5625             False
+
+====================================================================================================
+TABLE 7 — COMPUTATIONAL COST AND SEARCH DEPTH
+====================================================================================================
+ Budget                   Matchup  Baseline_Avg_Nodes  Opponent_Avg_Nodes  Baseline_Avg_Time_s  Opponent_Avg_Time_s  Baseline_Avg_Depth  Opponent_Avg_Depth  Baseline_Exhausted_Moves  Opponent_Exhausted_Moves
+   3000   Baseline vs Center_only           2076.6309           2081.7143               0.1096               0.1110              7.7480              7.7094                       742                       744
+   3000      Baseline vs Combined           2398.8394           2409.4817               0.1242               0.1412              7.2953              6.8484                       801                       855
+   3000 Baseline vs Pairs_Triples           2471.8884           2482.1552               0.1288               0.1446              7.2904              6.7556                       837                       862
+   6000   Baseline vs Center_only           3754.7466           3755.9670               0.1938               0.1963              8.2751              8.2647                       673                       678
+   6000      Baseline vs Combined           4760.8142           4815.2103               0.2497               0.2862              7.7878              7.2218                       791                       830
+   6000 Baseline vs Pairs_Triples           4713.4467           4826.6491               0.2481               0.2847              7.8980              7.1768                       774                       821
+  12000   Baseline vs Center_only           7075.4028           7117.8607               0.3722               0.3799              8.6021              8.5975                       600                       608
+  12000      Baseline vs Combined           8904.2397           9027.9929               0.4712               0.5384              8.4658              7.9745                       609                       686
+  12000 Baseline vs Pairs_Triples           8689.5465           9119.2165               0.4608               0.5355              8.5531              7.9917                       644                       754
+
+====================================================================================================
+EXPERIMENT 4 — FINAL VALIDATION
+====================================================================================================
+Original Experiment 3 games: 540
+Seed-level observations: 45
+Expected seed-level observations: 45
+Confidence interval groups: 9
+Friedman tests: 3
+Pairwise tests: 9
+All seed groups contain 12 games: True
+All 3 budgets present: True
+All 5 seeds present: True
+
+Saved analysis dataframes:
+E4_POOLED_DF
+E4_SEED_DF
+E4_CI_DF
+E4_ROBUSTNESS_DF
+E4_FRIEDMAN_DF
+E4_PAIRWISE_DF
+E4_COST_DF
+
+EXPERIMENT 4 ANALYSIS COMPLETED
+====================================================================================================

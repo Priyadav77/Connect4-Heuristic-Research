@@ -1,0 +1,574 @@
+
+# =====================================================================
+# EXPERIMENT 4 — STATISTICAL ANALYSIS AND ROBUSTNESS
+# Connect Four: Heuristic Feature Ablation
+#
+# Input: E3_RESULTS_DF from Experiment 3
+# No new games are generated.
+#
+# Analyses:
+# 1. Pooled W/L/D and win/draw/loss rates
+# 2. Seed-level performance
+# 3. Mean score and 95% confidence intervals
+# 4. Seed-wise robustness (standard deviation)
+# 5. Friedman test across computational budgets
+# 6. Pairwise Wilcoxon tests with Holm correction
+# 7. Visualizations
+#
+# Statistical unit: seed-level aggregate (5 seeds)
+# =====================================================================
+
+import math
+import statistics
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from scipy import stats
+from itertools import combinations
+
+# ----------------------- INPUT VALIDATION ----------------------------
+
+if "E3_RESULTS_DF" not in globals():
+    raise NameError(
+        "E3_RESULTS_DF not found. Run Experiment 3 first "
+        "or restore its dataframe."
+    )
+
+df = E3_RESULTS_DF.copy()
+
+required_columns = [
+    "budget", "config_a", "config_b",
+    "seed", "winner"
+]
+
+missing = [c for c in required_columns if c not in df.columns]
+
+if missing:
+    raise ValueError(f"Missing columns: {missing}")
+
+EXPECTED_GAMES = 540
+EXPECTED_SEEDS = 5
+EXPECTED_GAMES_PER_SEED = 12
+
+EXPECTED_BUDGETS = [3000, 6000, 12000]
+
+EXPECTED_PAIRINGS = [
+    ("Baseline", "Center_only"),
+    ("Baseline", "Combined"),
+    ("Baseline", "Pairs_Triples")
+]
+
+if len(df) != EXPECTED_GAMES:
+    raise ValueError(
+        f"Expected {EXPECTED_GAMES} games, found {len(df)}."
+    )
+
+if not set(df["budget"].unique()).issubset(set(EXPECTED_BUDGETS)):
+    raise ValueError("Unexpected computational budget found.")
+
+if not set(df["winner"].unique()).issubset({"A", "B", "DRAW"}):
+    raise ValueError("Unexpected winner labels found.")
+
+print("=" * 100)
+print("EXPERIMENT 4 — STATISTICAL ANALYSIS AND ROBUSTNESS")
+print("=" * 100)
+print("Input games:", len(df))
+print("Budgets:", sorted(df["budget"].unique()))
+print("Seeds:", sorted(df["seed"].unique()))
+print("Matchups:", df[["config_a", "config_b"]].drop_duplicates().values.tolist())
+print("Input validation: PASSED")
+
+
+# ----------------------- GAME-LEVEL METRICS --------------------------
+
+# A is always Baseline and B is the heuristic opponent.
+df["A_win"] = (df["winner"] == "A").astype(int)
+df["B_win"] = (df["winner"] == "B").astype(int)
+df["draw_flag"] = (df["winner"] == "DRAW").astype(int)
+
+# Baseline gets 1 for a win, 0.5 for a draw, 0 for a loss.
+df["A_score"] = (
+    df["A_win"] + 0.5 * df["draw_flag"]
+) * 100
+
+# Opponent gets the complementary score.
+df["B_score"] = (
+    df["B_win"] + 0.5 * df["draw_flag"]
+) * 100
+
+
+# ----------------------- POOLED RESULTS ------------------------------
+
+pooled_rows = []
+
+for (budget, config_a, config_b), group in df.groupby(
+    ["budget", "config_a", "config_b"]
+):
+
+    n = len(group)
+
+    wins_a = int(group["A_win"].sum())
+    wins_b = int(group["B_win"].sum())
+    draws = int(group["draw_flag"].sum())
+
+    pooled_rows.append({
+        "Budget": budget,
+        "Matchup": f"{config_a} vs {config_b}",
+        "Games": n,
+        "Baseline_Wins": wins_a,
+        "Baseline_Losses": wins_b,
+        "Draws": draws,
+        "Baseline_Win_Rate_%": wins_a / n * 100,
+        "Baseline_Loss_Rate_%": wins_b / n * 100,
+        "Draw_Rate_%": draws / n * 100,
+        "Baseline_Score_%": (
+            wins_a + 0.5 * draws
+        ) / n * 100
+    })
+
+pooled_df = pd.DataFrame(pooled_rows)
+
+print("\n" + "=" * 100)
+print("TABLE 1 — POOLED GAME RESULTS")
+print("=" * 100)
+
+print(
+    pooled_df.round(2).to_string(index=False)
+)
+
+
+# ----------------------- SEED-LEVEL AGGREGATION ----------------------
+
+seed_rows = []
+
+for (budget, config_a, config_b, seed), group in df.groupby(
+    ["budget", "config_a", "config_b", "seed"]
+):
+
+    n = len(group)
+
+    wins_a = int(group["A_win"].sum())
+    wins_b = int(group["B_win"].sum())
+    draws = int(group["draw_flag"].sum())
+
+    seed_rows.append({
+        "Budget": budget,
+        "Config_A": config_a,
+        "Config_B": config_b,
+        "Matchup": f"{config_a} vs {config_b}",
+        "Seed": seed,
+        "Games": n,
+        "Baseline_Wins": wins_a,
+        "Baseline_Losses": wins_b,
+        "Draws": draws,
+        "Baseline_Score": (
+            wins_a + 0.5 * draws
+        ) / n * 100,
+        "Baseline_Win_Rate": wins_a / n * 100,
+        "Draw_Rate": draws / n * 100
+    })
+
+seed_df = pd.DataFrame(seed_rows)
+
+if not (seed_df["Games"] == EXPECTED_GAMES_PER_SEED).all():
+    raise ValueError(
+        "Each seed should contain exactly 12 games per matchup and budget."
+    )
+
+print("\n" + "=" * 100)
+print("TABLE 2 — SEED-LEVEL BASELINE SCORES")
+print("=" * 100)
+
+print(
+    seed_df[
+        ["Budget", "Matchup", "Seed", "Games", "Baseline_Score"]
+    ].round(2).to_string(index=False)
+)
+
+
+# ----------------------- 95% CONFIDENCE INTERVAL ---------------------
+
+# Confidence intervals are calculated across the 5 seed-level scores.
+# t critical value for 95% CI, df = 4.
+T_CRITICAL_DF4 = 2.776445105
+
+ci_rows = []
+
+for (budget, matchup), group in seed_df.groupby(
+    ["Budget", "Matchup"]
+):
+
+    values = group["Baseline_Score"].to_numpy(dtype=float)
+
+    n = len(values)
+    mean_score = float(np.mean(values))
+    sd_score = float(np.std(values, ddof=1))
+    se = sd_score / math.sqrt(n)
+
+    margin = T_CRITICAL_DF4 * se
+
+    ci_rows.append({
+        "Budget": budget,
+        "Matchup": matchup,
+        "Seed_Count": n,
+        "Mean_Score_%": mean_score,
+        "SD_%": sd_score,
+        "SE_%": se,
+        "CI_Lower_%": mean_score - margin,
+        "CI_Upper_%": mean_score + margin
+    })
+
+ci_df = pd.DataFrame(ci_rows)
+
+print("\n" + "=" * 100)
+print("TABLE 3 — MEAN SCORE AND 95% CONFIDENCE INTERVAL")
+print("=" * 100)
+
+print(ci_df.round(3).to_string(index=False))
+
+
+# ----------------------- ROBUSTNESS ANALYSIS -------------------------
+
+# Lower standard deviation across seeds indicates more consistent scores.
+robustness_df = ci_df[
+    ["Budget", "Matchup", "Mean_Score_%", "SD_%"]
+].copy()
+
+robustness_df["Consistency"] = robustness_df["SD_%"].apply(
+    lambda x: "More consistent" if x < 15 else "Higher variability"
+)
+
+print("\n" + "=" * 100)
+print("TABLE 4 — SEED-WISE ROBUSTNESS")
+print("=" * 100)
+
+print(robustness_df.round(3).to_string(index=False))
+
+
+# ----------------------- FRIEDMAN TEST -------------------------------
+# Compare the same matchup across three budgets.
+# Each seed contributes one score at each budget.
+# This is a repeated-measures test across the five seeds.
+
+friedman_rows = []
+
+for matchup in sorted(seed_df["Matchup"].unique()):
+
+    match_data = seed_df[
+        seed_df["Matchup"] == matchup
+    ]
+
+    pivot = match_data.pivot(
+        index="Seed",
+        columns="Budget",
+        values="Baseline_Score"
+    ).sort_index()
+
+    pivot = pivot.reindex(columns=EXPECTED_BUDGETS)
+
+    if pivot.isnull().any().any():
+        raise ValueError(
+            f"Incomplete seed-budget data for {matchup}"
+        )
+
+    arrays = [
+        pivot[budget].to_numpy(dtype=float)
+        for budget in EXPECTED_BUDGETS
+    ]
+
+    try:
+        test_result = stats.friedmanchisquare(*arrays)
+
+        friedman_rows.append({
+            "Matchup": matchup,
+            "Test": "Friedman",
+            "Statistic": float(test_result.statistic),
+            "p_value": float(test_result.pvalue),
+            "Significant_0.05": bool(test_result.pvalue < 0.05)
+        })
+
+    except ValueError as e:
+        friedman_rows.append({
+            "Matchup": matchup,
+            "Test": "Friedman",
+            "Statistic": np.nan,
+            "p_value": np.nan,
+            "Significant_0.05": False,
+            "Note": str(e)
+        })
+
+friedman_df = pd.DataFrame(friedman_rows)
+
+print("\n" + "=" * 100)
+print("TABLE 5 — FRIEDMAN TEST: EFFECT OF NODE BUDGET")
+print("=" * 100)
+
+print(friedman_df.round(5).to_string(index=False))
+
+
+# ----------------------- PAIRWISE WILCOXON TESTS ---------------------
+# Compare budgets pairwise within each matchup.
+# Holm correction controls family-wise error across all tests.
+
+pairwise_rows = []
+
+for matchup in sorted(seed_df["Matchup"].unique()):
+
+    match_data = seed_df[
+        seed_df["Matchup"] == matchup
+    ]
+
+    pivot = match_data.pivot(
+        index="Seed",
+        columns="Budget",
+        values="Baseline_Score"
+    ).sort_index()
+
+    for budget_a, budget_b in combinations(EXPECTED_BUDGETS, 2):
+
+        x = pivot[budget_a].to_numpy(dtype=float)
+        y = pivot[budget_b].to_numpy(dtype=float)
+
+        differences = y - x
+
+        if np.allclose(differences, 0):
+            statistic = 0.0
+            p_value = 1.0
+        else:
+            result = stats.wilcoxon(
+                x,
+                y,
+                alternative="two-sided",
+                zero_method="wilcox",
+                method="auto"
+            )
+
+            statistic = float(result.statistic)
+            p_value = float(result.pvalue)
+
+        pairwise_rows.append({
+            "Matchup": matchup,
+            "Comparison": f"{budget_a} vs {budget_b}",
+            "Statistic": statistic,
+            "Raw_p_value": p_value
+        })
+
+pairwise_df = pd.DataFrame(pairwise_rows)
+
+
+# Holm correction across all pairwise comparisons.
+raw_p = pairwise_df["Raw_p_value"].to_numpy(dtype=float)
+
+order = np.argsort(raw_p)
+m = len(raw_p)
+
+adjusted = np.ones(m)
+running_max = 0.0
+
+for rank, idx in enumerate(order):
+    corrected = min(1.0, (m - rank) * raw_p[idx])
+    running_max = max(running_max, corrected)
+    adjusted[idx] = running_max
+
+pairwise_df["Holm_Adjusted_p"] = adjusted
+pairwise_df["Significant_0.05"] = (
+    pairwise_df["Holm_Adjusted_p"] < 0.05
+)
+
+print("\n" + "=" * 100)
+print("TABLE 6 — PAIRWISE WILCOXON TESTS WITH HOLM CORRECTION")
+print("=" * 100)
+
+print(pairwise_df.round(5).to_string(index=False))
+
+
+# ----------------------- COMPUTATIONAL COST SUMMARY ------------------
+
+# Aggregate node/time/depth metrics for each matchup and budget.
+cost_rows = []
+
+for (budget, config_a, config_b), group in df.groupby(
+    ["budget", "config_a", "config_b"]
+):
+
+    a_nodes = [v for x in group["A_nodes"] for v in x]
+    b_nodes = [v for x in group["B_nodes"] for v in x]
+
+    a_times = [v for x in group["A_time"] for v in x]
+    b_times = [v for x in group["B_time"] for v in x]
+
+    a_depths = [v for x in group["A_depth"] for v in x]
+    b_depths = [v for x in group["B_depth"] for v in x]
+
+    cost_rows.append({
+        "Budget": budget,
+        "Matchup": f"{config_a} vs {config_b}",
+        "Baseline_Avg_Nodes": np.mean(a_nodes),
+        "Opponent_Avg_Nodes": np.mean(b_nodes),
+        "Baseline_Avg_Time_s": np.mean(a_times),
+        "Opponent_Avg_Time_s": np.mean(b_times),
+        "Baseline_Avg_Depth": np.mean(a_depths),
+        "Opponent_Avg_Depth": np.mean(b_depths),
+        "Baseline_Exhausted_Moves": int(group["A_exhausted"].sum()),
+        "Opponent_Exhausted_Moves": int(group["B_exhausted"].sum())
+    })
+
+cost_df = pd.DataFrame(cost_rows)
+
+print("\n" + "=" * 100)
+print("TABLE 7 — COMPUTATIONAL COST AND SEARCH DEPTH")
+print("=" * 100)
+
+print(cost_df.round(4).to_string(index=False))
+
+
+# ----------------------- VISUALIZATION 1 -----------------------------
+# Baseline match score across budgets.
+
+plt.figure(figsize=(10, 6))
+
+for matchup in sorted(seed_df["Matchup"].unique()):
+
+    subset = ci_df[ci_df["Matchup"] == matchup].sort_values("Budget")
+
+    plt.plot(
+        subset["Budget"],
+        subset["Mean_Score_%"],
+        marker="o",
+        linewidth=2,
+        label=matchup
+    )
+
+    plt.fill_between(
+        subset["Budget"].to_numpy(dtype=float),
+        subset["CI_Lower_%"].to_numpy(dtype=float),
+        subset["CI_Upper_%"].to_numpy(dtype=float),
+        alpha=0.12
+    )
+
+plt.title("Baseline Score Across Computational Budgets")
+plt.xlabel("Node Budget per Move")
+plt.ylabel("Baseline Score (%)")
+plt.xticks(EXPECTED_BUDGETS)
+plt.ylim(0, 100)
+plt.grid(True, alpha=0.3)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+
+# ----------------------- VISUALIZATION 2 -----------------------------
+# Seed-level score variability.
+
+plt.figure(figsize=(11, 6))
+
+plot_data = []
+plot_labels = []
+
+for budget in EXPECTED_BUDGETS:
+    for matchup in sorted(seed_df["Matchup"].unique()):
+
+        values = seed_df[
+            (seed_df["Budget"] == budget)
+            & (seed_df["Matchup"] == matchup)
+        ]["Baseline_Score"].to_list()
+
+        plot_data.append(values)
+        plot_labels.append(
+            f"{budget}\n{matchup.replace('Baseline vs ', '')}"
+        )
+
+plt.boxplot(plot_data, labels=plot_labels)
+plt.title("Seed-Level Score Variability")
+plt.ylabel("Baseline Score (%)")
+plt.xticks(rotation=35, ha="right")
+plt.grid(True, axis="y", alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+
+# ----------------------- VISUALIZATION 3 -----------------------------
+# Average completed search depth.
+
+plt.figure(figsize=(10, 6))
+
+for matchup in sorted(cost_df["Matchup"].unique()):
+
+    subset = cost_df[
+        cost_df["Matchup"] == matchup
+    ].sort_values("Budget")
+
+    plt.plot(
+        subset["Budget"],
+        subset["Baseline_Avg_Depth"],
+        marker="o",
+        label=f"{matchup} — Baseline"
+    )
+
+    plt.plot(
+        subset["Budget"],
+        subset["Opponent_Avg_Depth"],
+        marker="s",
+        linestyle="--",
+        label=f"{matchup} — Opponent"
+    )
+
+plt.title("Average Completed Search Depth vs Node Budget")
+plt.xlabel("Node Budget per Move")
+plt.ylabel("Average Completed Depth")
+plt.xticks(EXPECTED_BUDGETS)
+plt.grid(True, alpha=0.3)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+
+# ----------------------- FINAL VALIDATION ----------------------------
+
+print("\n" + "=" * 100)
+print("EXPERIMENT 4 — FINAL VALIDATION")
+print("=" * 100)
+
+print("Original Experiment 3 games:", len(df))
+print("Seed-level observations:", len(seed_df))
+print("Expected seed-level observations:", 45)
+print("Confidence interval groups:", len(ci_df))
+print("Friedman tests:", len(friedman_df))
+print("Pairwise tests:", len(pairwise_df))
+
+print(
+    "All seed groups contain 12 games:",
+    bool((seed_df["Games"] == 12).all())
+)
+
+print(
+    "All 3 budgets present:",
+    sorted(df["budget"].unique()) == EXPECTED_BUDGETS
+)
+
+print(
+    "All 5 seeds present:",
+    len(df["seed"].unique()) == EXPECTED_SEEDS
+)
+
+# Preserve outputs for research report preparation.
+E4_POOLED_DF = pooled_df
+E4_SEED_DF = seed_df
+E4_CI_DF = ci_df
+E4_ROBUSTNESS_DF = robustness_df
+E4_FRIEDMAN_DF = friedman_df
+E4_PAIRWISE_DF = pairwise_df
+E4_COST_DF = cost_df
+
+print("\nSaved analysis dataframes:")
+print("E4_POOLED_DF")
+print("E4_SEED_DF")
+print("E4_CI_DF")
+print("E4_ROBUSTNESS_DF")
+print("E4_FRIEDMAN_DF")
+print("E4_PAIRWISE_DF")
+print("E4_COST_DF")
+
+print("\nEXPERIMENT 4 ANALYSIS COMPLETED")
+print("=" * 100)
