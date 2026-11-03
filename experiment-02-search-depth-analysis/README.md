@@ -1,0 +1,1 @@
+Experiment 2 investigates the effect of search depth on Connect Four AI performance. It evaluates search depths 2, 4, and 6 across three heuristic matchups using five random seeds and 540 AI-vs-AI games. The analysis records win/loss/draw outcomes, node consumption, execution time, and search completion metrics.
